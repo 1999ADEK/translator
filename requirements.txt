@@ -1,0 +1,4 @@
+mecab
+torchtext
+spacy
+jieba
