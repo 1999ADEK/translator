@@ -1,4 +1,4 @@
-mecab
 torchtext
 spacy
 jieba
+janome

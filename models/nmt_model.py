@@ -1,44 +1,27 @@
-from layer_utils import clones
-from layers import *
+import torch.nn as nn
+from .layer_utils import clones
+from .layers import *
 
-class Encoder(nn.Module):
-    "Core encoder is a stack of N layers"
-    def __init__(self, layer, N):
-        super(Encoder, self).__init__()
-        self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.size)
+class NMT(nn.Module):
+    def __init__(self, src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0.1):
+        super(NMT, self).__init__()
+        c = copy.deepcopy
+        attn = MultiHeadedAttention(h, d_model)
+        ff = PositionwiseFeedForward(d_model, d_ff, dropout)
+        position = PositionalEncoding(d_model, dropout)
         
-    def forward(self, x, mask):
-        "Pass the input (and mask) through each layer in turn."
-        for layer in self.layers:
-            x = layer(x, mask)
-        return self.norm(x)
-
-class Decoder(nn.Module):
-    "Generic N layer decoder with masking."
-    def __init__(self, layer, N):
-        super(Decoder, self).__init__()
-        self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.size)
-        
-    def forward(self, x, memory, src_mask, tgt_mask):
-        for layer in self.layers:
-            x = layer(x, memory, src_mask, tgt_mask)
-        return self.norm(x)
-
-class EncoderDecoder(nn.Module):
-    """
-    A standard Encoder-Decoder architecture. Base for this and many 
-    other models.
-    """
-    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator):
-        super(EncoderDecoder, self).__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-        self.src_embed = src_embed
-        self.tgt_embed = tgt_embed
-        self.generator = generator
-        
+        self.encoder = Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N)
+        self.decoder = Decoder(DecoderLayer(d_model, c(attn), c(attn), c(ff), dropout), N)
+        self.src_embed = nn.Sequential(Embeddings(d_model, src_vocab), c(position))
+        self.tgt_embed = nn.Sequential(Embeddings(d_model, tgt_vocab), c(position))
+        self.generator = Generator(d_model, tgt_vocab)
+    
+        # This was important from their code. 
+        # Initialize parameters with Glorot / fan_avg.
+        for p in self.parameters():
+            if p.dim() > 1:
+                nn.init.xavier_uniform(p)
+    
     def forward(self, src, tgt, src_mask, tgt_mask):
         "Take in and process masked src and target sequences."
         return self.decode(self.encode(src, src_mask), src_mask,
@@ -49,3 +32,18 @@ class EncoderDecoder(nn.Module):
     
     def decode(self, memory, src_mask, tgt, tgt_mask):
         return self.decoder(self.tgt_embed(tgt), memory, src_mask, tgt_mask)
+    
+    def greedy_decode(self, src, src_mask, max_len, start_symbol):
+        memory = self.encode(src, src_mask)
+        ys = torch.ones(1, 1).fill_(start_symbol).type_as(src.data)
+        for i in range(max_len-1):
+            out = self.decode(memory, src_mask, 
+                               Variable(ys), 
+                               Variable(subsequent_mask(ys.size(1))
+                                        .type_as(src.data)))
+            prob = self.generator(out[:, -1])
+            _, next_word = torch.max(prob, dim = 1)
+            next_word = next_word.data[0]
+            ys = torch.cat([ys, 
+                            torch.ones(1, 1).type_as(src.data).fill_(next_word)], dim=1)
+        return ys

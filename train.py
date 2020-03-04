@@ -1,6 +1,16 @@
-import torch.nn as nn
-from torchtext import data
 import time
+import argparse
+import numpy as np
+import torch
+from torch.autograd import Variable
+from torchtext import data, datasets
+from models.nmt_model import NMT
+from models.layer_utils import *
+from optims.NoamOpt import NoamOpt
+from options.train_options import TrainOptions
+from utils.util import *
+
+#TODO check pad_idx
 
 class Batch:
     "Object for holding a batch of data with mask during training."
@@ -12,7 +22,7 @@ class Batch:
             self.trg_y = trg[:, 1:]
             self.trg_mask = \
                 self.make_std_mask(self.trg, pad)
-            self.ntokens = (self.trg_y != pad).data.sum()
+            self.ntokens = (self.trg_y != pad).data.sum().item()
     
     @staticmethod
     def make_std_mask(tgt, pad):
@@ -37,7 +47,7 @@ def run_epoch(data_iter, model, loss_compute):
         tokens += batch.ntokens
         if i % 50 == 1:
             elapsed = time.time() - start
-            print("Epoch Step: %d Loss: %f Tokens per Sec: %f" %
+            print("Step: %d Loss: %f Tokens per Sec: %f" %
                     (i, loss / batch.ntokens, tokens / elapsed))
             start = time.time()
             tokens = 0
@@ -50,8 +60,8 @@ def batch_size_fn(new, count, sofar):
     if count == 1:
         max_src_in_batch = 0
         max_tgt_in_batch = 0
-    max_src_in_batch = max(max_src_in_batch,  len(new.src))
-    max_tgt_in_batch = max(max_tgt_in_batch,  len(new.trg) + 2)
+    max_src_in_batch = max(max_src_in_batch,  len(new.Japanese))
+    max_tgt_in_batch = max(max_tgt_in_batch,  len(new.Chinese) + 2)
     src_elements = count * max_src_in_batch
     tgt_elements = count * max_tgt_in_batch
     return max(src_elements, tgt_elements)
@@ -79,6 +89,23 @@ class LabelSmoothing(nn.Module):
         self.true_dist = true_dist
         return self.criterion(x, Variable(true_dist, requires_grad=False))
 
+class SimpleLossCompute:
+    "A simple loss compute and train function."
+    def __init__(self, generator, criterion, opt=None):
+        self.generator = generator
+        self.criterion = criterion
+        self.opt = opt
+        
+    def __call__(self, x, y, norm):
+        x = self.generator(x)
+        loss = self.criterion(x.contiguous().view(-1, x.size(-1)), 
+                              y.contiguous().view(-1)) / norm
+        loss.backward()
+        if self.opt is not None:
+            self.opt.step()
+            self.opt.optimizer.zero_grad()
+        return loss.item() * norm
+
 class MyIterator(data.Iterator):
     def create_batches(self):
         if self.train:
@@ -99,8 +126,91 @@ class MyIterator(data.Iterator):
 
 def rebatch(pad_idx, batch):
     "Fix order in torchtext to match ours"
-    src, trg = batch.src.transpose(0, 1), batch.trg.transpose(0, 1)
+    src, trg = batch.Japanese.transpose(0, 1), batch.Chinese.transpose(0, 1)
     return Batch(src, trg, pad_idx)
 
 if __name__ == '__main__':
+    # parse options
+    opt = TrainOptions().parse()
+    TrainOptions.print_options(opt)
+    dataroot = opt.dataroot
+    expr_name = opt.name
+    checkpoints_dir = opt.checkpoints_dir
+    batch_size = opt.batch_size
+    load_epoch = opt.epoch
+    save_latest_freq = opt.save_latest_freq
+    save_epoch_freq = opt.save_epoch_freq
+    continue_train = opt.continue_train
+    epoch_count = opt.epoch_count
     
+    # setting device on GPU if available, else CPU
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    # load datasets
+    print('load datasets')
+    datafields, datasets = load_data(dataroot)
+    ZH_TEXT = datafields['Chinese']
+    JA_TEXT = datafields['Japanese']
+    train, val = datasets['train'], datasets['val']
+    
+    # defiine criterion and move to GPU if available
+    print('defiine criterion')
+    criterion = LabelSmoothing(size=len(ZH_TEXT.vocab), padding_idx=0, smoothing=0.0)
+    if torch.cuda.is_available():
+        criterion.cuda()
+    
+    # model and optimizer
+    print('model and optimizer')
+    model = NMT(len(JA_TEXT.vocab), len(ZH_TEXT.vocab))
+    if torch.cuda.is_available():
+        model.cuda()
+    model_opt = NoamOpt(model.src_embed[0].d_model, 1, 2000,
+            torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
+    
+    expr_path = os.path.join(checkpoints_dir, expr_name)
+    
+    # load state dictionary if continue training
+    if continue_train:
+        checkpoint = torch.load(os.path.join(expr_path, f'{expr_name}_{load_epoch}.pt'))
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model_opt._step = checkpoint['model_step']
+        model_opt.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    
+    train_iter = MyIterator(train, batch_size=batch_size, device=device,
+                            repeat=False, sort_key=lambda x: (len(x.Japanese), len(x.Chinese)),
+                            batch_size_fn=batch_size_fn, train=True)
+    val_iter = MyIterator(val, batch_size=batch_size, device=device,
+                            repeat=False, sort_key=lambda x: (len(x.Japanese), len(x.Chinese)),
+                            batch_size_fn=batch_size_fn, train=False)
+    
+    pad_idx = ZH_TEXT.vocab.stoi["<pad>"]
+    print('start epoch')
+    with open('check_running.txt', 'w') as f:
+        f.write('start epoch')
+    for epoch in range(100):
+        with open('check_running.txt', 'w') as f:
+            f.write(f'epoch {epoch}')
+        print(f'------------Epoch {epoch_count + epoch}------------')
+        # train for one epoch
+        model.train()
+        run_epoch((rebatch(pad_idx, b) for b in train_iter), model, SimpleLossCompute(model.generator, criterion, opt=model_opt))
+        
+        # evaluate on val data
+        print('On validation set:')
+        model.eval()
+        loss = run_epoch((rebatch(pad_idx, b) for b in val_iter), model, SimpleLossCompute(model.generator, criterion, opt=model_opt))
+        print('Loss:', loss)
+        
+        # save model
+        if epoch % save_latest_freq == 0:
+            torch.save({
+                        'model_state_dict': model.state_dict(),
+                        'model_step': model_opt._step,
+                        'optimizer_state_dict': model_opt.optimizer.state_dict()
+                        }, os.path.join(expr_path, f'{expr_name}_latest.pt'))
+        if epoch % save_epoch_freq == 0:
+            torch.save({
+                        'model_state_dict': model.state_dict(),
+                        'model_step': model_opt._step,
+                        'optimizer_state_dict': model_opt.optimizer.state_dict()
+                        }, os.path.join(expr_path, f'{expr_name}_{epoch_count + epoch: 03}.pt'))
