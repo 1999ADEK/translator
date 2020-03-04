@@ -182,12 +182,7 @@ if __name__ == '__main__':
                             batch_size_fn=batch_size_fn, train=False)
     
     pad_idx = ZH_TEXT.vocab.stoi["<pad>"]
-    print('start epoch')
-    with open('check_running.txt', 'w') as f:
-        f.write('start epoch')
     for epoch in range(num_epoch):
-        with open('check_running.txt', 'w') as f:
-            f.write(f'epoch {epoch}')
         print(f'------------Epoch {epoch_count + epoch}------------')
         # train for one epoch
         model.train()
