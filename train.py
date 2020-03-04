@@ -141,6 +141,7 @@ if __name__ == '__main__':
     save_latest_freq = opt.save_latest_freq
     save_epoch_freq = opt.save_epoch_freq
     continue_train = opt.continue_train
+    num_epoch = opt.num_epoch
     epoch_count = opt.epoch_count
     
     # setting device on GPU if available, else CPU
@@ -187,7 +188,7 @@ if __name__ == '__main__':
     print('start epoch')
     with open('check_running.txt', 'w') as f:
         f.write('start epoch')
-    for epoch in range(100):
+    for epoch in range(num_epoch):
         with open('check_running.txt', 'w') as f:
             f.write(f'epoch {epoch}')
         print(f'------------Epoch {epoch_count + epoch}------------')
