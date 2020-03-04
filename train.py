@@ -206,4 +206,4 @@ if __name__ == '__main__':
                         'model_state_dict': model.state_dict(),
                         'model_step': model_opt._step,
                         'optimizer_state_dict': model_opt.optimizer.state_dict()
-                        }, os.path.join(expr_path, f'{expr_name}_{epoch_count + epoch:03}.pt'))
+                        }, os.path.join(expr_path, f'{expr_name}_{epoch_count+epoch}.pt'))
