@@ -148,9 +148,9 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # load datasets
-    datafields, datasets = load_data(dataroot)
-    ZH_TEXT = datafields['Chinese']
-    JA_TEXT = datafields['Japanese']
+    data_fields, datasets = load_data(dataroot)
+    ZH_TEXT = data_fields['Chinese']
+    JA_TEXT = data_fields['Japanese']
     train, val = datasets['train'], datasets['val']
     
     # defiine criterion and move to GPU if available
