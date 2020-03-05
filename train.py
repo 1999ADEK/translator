@@ -9,7 +9,7 @@ from models.layer_utils import *
 from optims.NoamOpt import NoamOpt
 from options.train_options import TrainOptions
 from utils.util import *
-frim utils.batch_iter import *
+from utils.batch_iter import *
 
 
 def run_epoch(data_iter, model, loss_compute):
