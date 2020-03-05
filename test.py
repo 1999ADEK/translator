@@ -28,7 +28,11 @@ def translate(test, model, JA_TEXT, ZH_TEXT, out_path):
         src_mask = (src != JA_TEXT.vocab.stoi["<pad>"]).unsqueeze(-2)
         out = model.greedy_decode(src, src_mask, max_len=60, start_symbol=ZH_TEXT.vocab.stoi["<sos>"])
         with open(result_file, 'a+', encoding='utf-8') as f:
-            message = "Translation: " + token2string(out[0], ZH_TEXT) + "\n"
+            sentence = ""
+            for w in test[i].Japanese:
+                sentence += w
+            message = "{:>11}".format("Sentence") + ": " + sentence + "\n"
+            message += "Translation: " + token2string(out[0], ZH_TEXT) + "\n"
             gold = ""
             for w in test[i].Chinese:
                 gold += w
