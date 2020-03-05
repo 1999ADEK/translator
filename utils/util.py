@@ -26,7 +26,7 @@ def load_data(dataroot, isTest=False):
     
     data_fields = [('Chinese', ZH_TEXT), ('Japanese', JA_TEXT)]
     if isTest:
-        test = TabularDataset.splits(path=dataroot, test='test.csv', format='csv', fields=data_fields)
+        train, test = TabularDataset.splits(path=dataroot, train='train.csv', test='test.csv', format='csv', fields=data_fields)
     else:
         train, val = TabularDataset.splits(path=dataroot, train='train.csv', validation='val.csv', format='csv', fields=data_fields)
     

@@ -1,5 +1,6 @@
 from torch.autograd import Variable
 from torchtext import data, datasets
+from models.layer_utils import subsequent_mask
 
 
 class Batch:
