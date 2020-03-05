@@ -15,7 +15,7 @@ def token2string(sent, ZH_TEXT):
         string += sym
     return string
 
-def translate(test, model, JA_TEXT, ZH_TEXT, out_path):
+def translate(test, model, JA_TEXT, ZH_TEXT, out_path, device):
     model.eval()
     print("Translating test data...")
     result_file = os.path.join(out_path, 'translations.txt')
@@ -24,7 +24,7 @@ def translate(test, model, JA_TEXT, ZH_TEXT, out_path):
             print(f"Translating the {i}th sentence...")
         sent = test[i].Japanese
         src = torch.LongTensor([[JA_TEXT.vocab.stoi[w] for w in sent]])
-        src = Variable(src)
+        src = src.to(device)
         src_mask = (src != JA_TEXT.vocab.stoi["<pad>"]).unsqueeze(-2)
         out = model.greedy_decode(src, src_mask, max_len=60, start_symbol=ZH_TEXT.vocab.stoi["<sos>"])
         with open(result_file, 'a+', encoding='utf-8') as f:
@@ -71,4 +71,4 @@ if __name__ == '__main__':
     checkpoint = torch.load(os.path.join(expr_path, f'{expr_name}_{load_epoch}.pt'))
     model.load_state_dict(checkpoint['model_state_dict'])
     
-    translate(test, model, JA_TEXT, ZH_TEXT, out_path)
+    translate(test, model, JA_TEXT, ZH_TEXT, out_path, device)
