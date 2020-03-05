@@ -11,7 +11,7 @@ def mkdir(path):
     if not os.path.exists(path):
         os.makedirs(path)
         
-def load_data(dataroot, isTest = False):
+def load_data(dataroot, isTest=False):
     nlp_zh = Chinese()
     tokenizer_zh = nlp_zh.Defaults.create_tokenizer(nlp_zh)
     tokenizer_ja = Tokenizer().tokenize
@@ -21,7 +21,7 @@ def load_data(dataroot, isTest = False):
     def tokenize_ja(sentence):
         return [tok for tok in tokenizer_ja(sentence,  wakati=True)]
     
-    ZH_TEXT = Field(tokenize=tokenize_zh)
+    ZH_TEXT = Field(tokenize=tokenize_zh, init_token = "<sos>", eos_token = "<eos>")
     JA_TEXT = Field(tokenize=tokenize_ja)
     
     data_fields = [('Chinese', ZH_TEXT), ('Japanese', JA_TEXT)]
